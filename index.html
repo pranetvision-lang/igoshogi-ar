@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>囲碁将棋 AR</title>
+    
+    <!-- A-Frame と MindAR ライブラリ -->
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+            background: #000;
+            overflow: hidden;
+        }
+        
+        /* スタートオーバーレイ */
+        #start-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        #start-overlay h1 {
+            font-size: 32px;
+            margin-bottom: 20px;
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+        
+        #start-overlay p {
+            font-size: 16px;
+            margin-bottom: 40px;
+            line-height: 1.8;
+            opacity: 0.9;
+            max-width: 320px;
+        }
+        
+        #start-button {
+            background: white;
+            color: #1a1a2e;
+            border: none;
+            padding: 18px 50px;
+            font-size: 18px;
+            font-weight: 700;
+            border-radius: 50px;
+            cursor: pointer;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            transition: transform 0.2s;
+        }
+        
+        #start-button:active {
+            transform: scale(0.95);
+        }
+        
+        /* スキャンガイド */
+        #scan-guide {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            text-align: center;
+            z-index: 999;
+            pointer-events: none;
+            display: none;
+        }
+        
+        #scan-guide.show {
+            display: block;
+        }
+        
+        .scan-frame {
+            width: 250px;
+            height: 250px;
+            border: 3px solid white;
+            border-radius: 20px;
+            margin: 0 auto 20px;
+            position: relative;
+            opacity: 0.7;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        .scan-frame::before,
+        .scan-frame::after {
+            content: '';
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border: 4px solid #00ff88;
+        }
+        
+        .scan-frame::before {
+            top: -4px;
+            left: -4px;
+            border-right: none;
+            border-bottom: none;
+        }
+        
+        .scan-frame::after {
+            bottom: -4px;
+            right: -4px;
+            border-left: none;
+            border-top: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+        
+        #scan-guide p {
+            font-size: 16px;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.5);
+            padding: 10px 20px;
+            border-radius: 20px;
+            display: inline-block;
+        }
+        
+        /* A-Frameのシーン */
+        a-scene {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <!-- スタート画面 -->
+    <div id="start-overlay">
+        <h1>囲碁将棋 AR</h1>
+        <p>
+            アクリルスタンドにカメラを向けると<br>
+            画面に漫才師が登場します
+        </p>
+        <button id="start-button">体験スタート</button>
+    </div>
+    
+    <!-- スキャン中のガイド -->
+    <div id="scan-guide">
+        <div class="scan-frame"></div>
+        <p>マイクのロゴをカメラに映してください</p>
+    </div>
+    
+    <!-- A-Frame + MindAR シーン -->
+    <a-scene
+        mindar-image="imageTargetSrc: ./assets/marker.mind; autoStart: false; uiScanning: no; uiLoading: no;"
+        embedded
+        color-space="sRGB"
+        renderer="colorManagement: true, physicallyCorrectLights"
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false">
+        
+        <!-- カメラ -->
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        
+        <!-- アセット定義 -->
+        <a-assets>
+            <video 
+                id="manzai-video" 
+                src="./assets/manzai.mp4" 
+                preload="auto" 
+                loop 
+                muted 
+                playsinline 
+                webkit-playsinline 
+                crossorigin="anonymous">
+            </video>
+        </a-assets>
+        
+        <!-- マーカー認識時のターゲット -->
+        <a-entity mindar-image-target="targetIndex: 0" id="target-entity">
+            <!-- 動画を表示する平面 -->
+            <a-video 
+                id="manzai-plane"
+                src="#manzai-video"
+                position="0 0.5 0"
+                width="1.5"
+                height="2.667"
+                rotation="0 0 0">
+            </a-video>
+        </a-entity>
+    </a-scene>
+    
+    <script>
+        // 要素を取得
+        const startOverlay = document.getElementById('start-overlay');
+        const startButton = document.getElementById('start-button');
+        const scanGuide = document.getElementById('scan-guide');
+        const sceneEl = document.querySelector('a-scene');
+        const video = document.getElementById('manzai-video');
+        const targetEntity = document.getElementById('target-entity');
+        
+        // スタートボタンクリック
+        startButton.addEventListener('click', async () => {
+            startOverlay.style.display = 'none';
+            scanGuide.classList.add('show');
+            
+            // 動画を事前に読み込み&再生試行（iOS対策）
+            video.muted = true;
+            video.playsInline = true;
+            try {
+                await video.play();
+                video.pause();
+                video.currentTime = 0;
+            } catch (e) {
+                console.log('動画の事前再生失敗:', e);
+            }
+            
+            // MindARを開始
+            const mindarSystem = sceneEl.systems['mindar-image-system'];
+            mindarSystem.start();
+        });
+        
+        // マーカー認識時
+        targetEntity.addEventListener('targetFound', () => {
+            console.log('マーカー認識！');
+            scanGuide.classList.remove('show');
+            
+            // 動画を再生
+            video.currentTime = 0;
+            video.play().catch(e => console.log('動画再生エラー:', e));
+        });
+        
+        // マーカーロスト時
+        targetEntity.addEventListener('targetLost', () => {
+            console.log('マーカーをロスト');
+            scanGuide.classList.add('show');
+            video.pause();
+        });
+    </script>
+</body>
+</html>

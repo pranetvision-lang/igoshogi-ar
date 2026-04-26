@@ -5,24 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>囲碁将棋 AR</title>
     
-    <!-- A-Frame と MindAR ライブラリ -->
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/dist/mindar-image-aframe.prod.js"></script>
     
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
         }
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
             background: #000;
-            overflow: hidden;
         }
         
-        /* スタートオーバーレイ */
         #start-overlay {
             position: fixed;
             top: 0;
@@ -66,14 +65,12 @@
             cursor: pointer;
             letter-spacing: 1px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            transition: transform 0.2s;
         }
         
         #start-button:active {
             transform: scale(0.95);
         }
         
-        /* スキャンガイド */
         #scan-guide {
             position: fixed;
             top: 50%;
@@ -101,8 +98,7 @@
             animation: pulse 2s ease-in-out infinite;
         }
         
-        .scan-frame::before,
-        .scan-frame::after {
+        .scan-frame::before, .scan-frame::after {
             content: '';
             position: absolute;
             width: 30px;
@@ -138,16 +134,24 @@
             display: inline-block;
         }
         
-        /* A-Frameのシーン */
-        a-scene {
-            display: block;
-            width: 100vw;
-            height: 100vh;
+        #debug-info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: #00ff88;
+            font-size: 11px;
+            background: rgba(0,0,0,0.7);
+            padding: 8px;
+            border-radius: 4px;
+            z-index: 998;
+            font-family: monospace;
+            max-width: 280px;
+            word-wrap: break-word;
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
-    <!-- スタート画面 -->
     <div id="start-overlay">
         <h1>囲碁将棋 AR</h1>
         <p>
@@ -157,25 +161,22 @@
         <button id="start-button">体験スタート</button>
     </div>
     
-    <!-- スキャン中のガイド -->
+    <div id="debug-info">準備中...</div>
+    
     <div id="scan-guide">
         <div class="scan-frame"></div>
         <p>マイクのロゴをカメラに映してください</p>
     </div>
     
-    <!-- A-Frame + MindAR シーン -->
     <a-scene
         mindar-image="imageTargetSrc: ./assets/marker.mind; autoStart: false; uiScanning: no; uiLoading: no;"
-        embedded
         color-space="sRGB"
         renderer="colorManagement: true, physicallyCorrectLights"
         vr-mode-ui="enabled: false"
         device-orientation-permission-ui="enabled: false">
         
-        <!-- カメラ -->
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
         
-        <!-- アセット定義 -->
         <a-assets>
             <video 
                 id="manzai-video" 
@@ -189,9 +190,7 @@
             </video>
         </a-assets>
         
-        <!-- マーカー認識時のターゲット -->
         <a-entity mindar-image-target="targetIndex: 0" id="target-entity">
-            <!-- 動画を表示する平面 -->
             <a-video 
                 id="manzai-plane"
                 src="#manzai-video"
@@ -204,48 +203,76 @@
     </a-scene>
     
     <script>
-        // 要素を取得
         const startOverlay = document.getElementById('start-overlay');
         const startButton = document.getElementById('start-button');
         const scanGuide = document.getElementById('scan-guide');
+        const debugInfo = document.getElementById('debug-info');
         const sceneEl = document.querySelector('a-scene');
         const video = document.getElementById('manzai-video');
         const targetEntity = document.getElementById('target-entity');
         
-        // スタートボタンクリック
+        function log(msg) {
+            console.log('[AR]', msg);
+            debugInfo.innerHTML = msg;
+        }
+        
+        log('準備中...');
+        
+        sceneEl.addEventListener('loaded', () => {
+            log('シーン読み込み完了');
+        });
+        
+        sceneEl.addEventListener('arReady', () => {
+            log('AR準備完了');
+        });
+        
+        sceneEl.addEventListener('arError', (event) => {
+            log('ARエラー: ' + JSON.stringify(event.detail || event));
+        });
+        
         startButton.addEventListener('click', async () => {
+            log('スタート押下');
             startOverlay.style.display = 'none';
             scanGuide.classList.add('show');
             
-            // 動画を事前に読み込み&再生試行（iOS対策）
             video.muted = true;
             video.playsInline = true;
             try {
                 await video.play();
                 video.pause();
                 video.currentTime = 0;
+                log('動画準備OK');
             } catch (e) {
-                console.log('動画の事前再生失敗:', e);
+                log('動画準備NG: ' + e.message);
             }
             
-            // MindARを開始
-            const mindarSystem = sceneEl.systems['mindar-image-system'];
-            mindarSystem.start();
+            try {
+                const arSystem = sceneEl.systems['mindar-image-system'];
+                if (!arSystem) {
+                    log('arSystem無し');
+                    return;
+                }
+                log('AR起動中...');
+                await arSystem.start();
+                log('AR起動成功');
+                
+                setTimeout(() => {
+                    debugInfo.style.display = 'none';
+                }, 5000);
+            } catch (e) {
+                log('AR起動NG: ' + e.message);
+            }
         });
         
-        // マーカー認識時
         targetEntity.addEventListener('targetFound', () => {
-            console.log('マーカー認識！');
+            log('マーカー認識！');
             scanGuide.classList.remove('show');
-            
-            // 動画を再生
             video.currentTime = 0;
-            video.play().catch(e => console.log('動画再生エラー:', e));
+            video.play().catch(e => log('再生NG: ' + e.message));
         });
         
-        // マーカーロスト時
         targetEntity.addEventListener('targetLost', () => {
-            console.log('マーカーをロスト');
+            log('ロスト');
             scanGuide.classList.add('show');
             video.pause();
         });

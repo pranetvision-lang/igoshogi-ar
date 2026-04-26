@@ -2,11 +2,11 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>囲碁将棋 AR</title>
     
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -169,19 +169,18 @@
     </div>
     
     <a-scene
-        mindar-image="imageTargetSrc: ./assets/marker.mind; autoStart: false; uiScanning: no; uiLoading: no;"
+        mindar-image="imageTargetSrc: ./assets/marker.mind; autoStart: false; uiScanning: no; uiLoading: no; uiError: no;"
         color-space="sRGB"
         renderer="colorManagement: true, physicallyCorrectLights"
         vr-mode-ui="enabled: false"
         device-orientation-permission-ui="enabled: false">
-        
-        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
         
         <a-assets>
             <video 
                 id="manzai-video" 
                 src="./assets/manzai.mp4" 
                 preload="auto" 
+                response-type="arraybuffer" 
                 loop 
                 muted 
                 playsinline 
@@ -190,9 +189,10 @@
             </video>
         </a-assets>
         
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        
         <a-entity mindar-image-target="targetIndex: 0" id="target-entity">
             <a-video 
-                id="manzai-plane"
                 src="#manzai-video"
                 position="0 0.5 0"
                 width="1.5"
@@ -203,78 +203,104 @@
     </a-scene>
     
     <script>
-        const startOverlay = document.getElementById('start-overlay');
-        const startButton = document.getElementById('start-button');
-        const scanGuide = document.getElementById('scan-guide');
-        const debugInfo = document.getElementById('debug-info');
-        const sceneEl = document.querySelector('a-scene');
-        const video = document.getElementById('manzai-video');
-        const targetEntity = document.getElementById('target-entity');
-        
-        function log(msg) {
-            console.log('[AR]', msg);
-            debugInfo.innerHTML = msg;
-        }
-        
-        log('準備中...');
-        
-        sceneEl.addEventListener('loaded', () => {
-            log('シーン読み込み完了');
-        });
-        
-        sceneEl.addEventListener('arReady', () => {
-            log('AR準備完了');
-        });
-        
-        sceneEl.addEventListener('arError', (event) => {
-            log('ARエラー: ' + JSON.stringify(event.detail || event));
-        });
-        
-        startButton.addEventListener('click', async () => {
-            log('スタート押下');
-            startOverlay.style.display = 'none';
-            scanGuide.classList.add('show');
+        document.addEventListener("DOMContentLoaded", function() {
+            const startOverlay = document.getElementById('start-overlay');
+            const startButton = document.getElementById('start-button');
+            const scanGuide = document.getElementById('scan-guide');
+            const debugInfo = document.getElementById('debug-info');
+            const sceneEl = document.querySelector('a-scene');
+            const video = document.getElementById('manzai-video');
+            const targetEntity = document.getElementById('target-entity');
             
-            video.muted = true;
-            video.playsInline = true;
-            try {
-                await video.play();
-                video.pause();
-                video.currentTime = 0;
-                log('動画準備OK');
-            } catch (e) {
-                log('動画準備NG: ' + e.message);
+            let arSystem = null;
+            
+            function log(msg) {
+                console.log('[AR]', msg);
+                debugInfo.innerHTML = msg;
             }
             
-            try {
-                const arSystem = sceneEl.systems['mindar-image-system'];
+            log('DOM準備OK');
+            
+            // シーン読み込み完了でarSystemを取得（公式の正しい方法）
+            sceneEl.addEventListener('loaded', function () {
+                arSystem = sceneEl.systems['mindar-image-system'];
+                log('シーン読み込み完了 / arSystem取得: ' + (arSystem ? 'OK' : 'NG'));
+            });
+            
+            sceneEl.addEventListener('arReady', () => {
+                log('AR準備完了！');
+            });
+            
+            sceneEl.addEventListener('arError', (event) => {
+                log('ARエラー: ' + JSON.stringify(event.detail || event));
+            });
+            
+            // ターゲット認識
+            targetEntity.addEventListener("targetFound", event => {
+                log('マーカー認識！');
+                scanGuide.classList.remove('show');
+                video.currentTime = 0;
+                video.play().catch(e => log('再生NG: ' + e.message));
+            });
+            
+            targetEntity.addEventListener("targetLost", event => {
+                log('ロスト');
+                scanGuide.classList.add('show');
+                video.pause();
+            });
+            
+            // スタートボタン
+            startButton.addEventListener('click', async () => {
+                log('スタート押下');
+                startOverlay.style.display = 'none';
+                scanGuide.classList.add('show');
+                
+                // 動画を事前にユーザー操作で準備（iOS必須）
+                video.muted = true;
+                video.playsInline = true;
+                try {
+                    await video.play();
+                    video.pause();
+                    video.currentTime = 0;
+                    log('動画準備OK');
+                } catch (e) {
+                    log('動画準備NG: ' + e.message);
+                }
+                
+                // arSystemが取得できているか確認
                 if (!arSystem) {
-                    log('arSystem無し');
+                    arSystem = sceneEl.systems['mindar-image-system'];
+                }
+                
+                if (!arSystem) {
+                    log('arSystem取得失敗 / 再試行');
+                    // シーン読み込み待ち
+                    setTimeout(() => {
+                        arSystem = sceneEl.systems['mindar-image-system'];
+                        if (arSystem) {
+                            log('arSystem遅延取得OK');
+                            arSystem.start();
+                        } else {
+                            log('arSystem取得不可');
+                        }
+                    }, 1000);
                     return;
                 }
-                log('AR起動中...');
-                await arSystem.start();
-                log('AR起動成功');
                 
-                setTimeout(() => {
-                    debugInfo.style.display = 'none';
-                }, 5000);
-            } catch (e) {
-                log('AR起動NG: ' + e.message);
-            }
-        });
-        
-        targetEntity.addEventListener('targetFound', () => {
-            log('マーカー認識！');
-            scanGuide.classList.remove('show');
-            video.currentTime = 0;
-            video.play().catch(e => log('再生NG: ' + e.message));
-        });
-        
-        targetEntity.addEventListener('targetLost', () => {
-            log('ロスト');
-            scanGuide.classList.add('show');
-            video.pause();
+                // AR開始
+                try {
+                    log('AR起動中...');
+                    arSystem.start();
+                    log('AR起動コマンド送信完了');
+                    
+                    // 5秒後にデバッグ非表示
+                    setTimeout(() => {
+                        debugInfo.style.display = 'none';
+                    }, 5000);
+                } catch (e) {
+                    log('AR起動NG: ' + e.message);
+                }
+            });
         });
     </script>
 </body>

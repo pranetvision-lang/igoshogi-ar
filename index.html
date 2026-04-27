@@ -19,7 +19,6 @@ AFRAME.registerComponent('alpha-video', {
     const width = this.data.width;
     const height = this.data.height;
     
-    // 2つの動画テクスチャを作成
     const colorTexture = new THREE.VideoTexture(colorVideo);
     colorTexture.minFilter = THREE.LinearFilter;
     colorTexture.magFilter = THREE.LinearFilter;
@@ -28,7 +27,6 @@ AFRAME.registerComponent('alpha-video', {
     maskTexture.minFilter = THREE.LinearFilter;
     maskTexture.magFilter = THREE.LinearFilter;
     
-    // カスタムシェーダー：マスクの明るさをアルファに使う
     const material = new THREE.ShaderMaterial({
       uniforms: {
         colorMap: { value: colorTexture },
@@ -49,7 +47,6 @@ AFRAME.registerComponent('alpha-video', {
         void main() {
           vec4 color = texture2D(colorMap, vUv);
           vec4 mask = texture2D(maskMap, vUv);
-          // マスクの輝度をアルファ値に使う
           float alpha = (mask.r + mask.g + mask.b) / 3.0;
           gl_FragColor = vec4(color.rgb, alpha);
         }
@@ -99,7 +96,7 @@ AFRAME.registerComponent('video-handler', {
 <a-entity 
   position="0 0 0" 
   rotation="0 0 0"
-  alpha-video="color: #manzai-color; mask: #manzai-mask; width: 1.5; height: 2.667"
+  alpha-video="color: #manzai-color; mask: #manzai-mask; width: 4.5; height: 1.5"
 ></a-entity>
 </a-entity>
 </a-scene>

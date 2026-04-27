@@ -4,65 +4,85 @@
 <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 <script>
-// グリーンバック透過シェーダー
-AFRAME.registerShader('chroma', {
+// カラー+マスク合成シェーダー
+AFRAME.registerComponent('alpha-video', {
   schema: {
-    src: {type: 'map'},
-    color: {type: 'color', default: '#00ff00', is: 'uniform'},
-    similarity: {type: 'number', default: 0.4, is: 'uniform'},
-    smoothness: {type: 'number', default: 0.08, is: 'uniform'},
-    spill: {type: 'number', default: 0.1, is: 'uniform'}
+    color: { type: 'selector' },
+    mask: { type: 'selector' },
+    width: { type: 'number', default: 1 },
+    height: { type: 'number', default: 1 }
   },
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: `
-    uniform sampler2D src;
-    uniform vec3 color;
-    uniform float similarity;
-    uniform float smoothness;
-    uniform float spill;
-    varying vec2 vUv;
+  
+  init: function () {
+    const colorVideo = this.data.color;
+    const maskVideo = this.data.mask;
+    const width = this.data.width;
+    const height = this.data.height;
     
-    vec2 RGBtoUV(vec3 rgb) {
-      return vec2(
-        rgb.r * -0.169 + rgb.g * -0.331 + rgb.b *  0.5    + 0.5,
-        rgb.r *  0.5   + rgb.g * -0.419 + rgb.b * -0.081  + 0.5
-      );
-    }
+    // 2つの動画テクスチャを作成
+    const colorTexture = new THREE.VideoTexture(colorVideo);
+    colorTexture.minFilter = THREE.LinearFilter;
+    colorTexture.magFilter = THREE.LinearFilter;
     
-    void main() {
-      vec4 rgba = texture2D(src, vUv);
-      float chromaDist = distance(RGBtoUV(rgba.rgb), RGBtoUV(color));
-      float baseMask = chromaDist - similarity;
-      float fullMask = pow(clamp(baseMask / smoothness, 0., 1.), 1.5);
-      rgba.a = fullMask;
-      float spillVal = pow(clamp(baseMask / spill, 0., 1.), 1.5);
-      float desat = clamp(rgba.r * 0.2126 + rgba.g * 0.7152 + rgba.b * 0.0722, 0., 1.);
-      rgba.rgb = mix(vec3(desat, desat, desat), rgba.rgb, spillVal);
-      gl_FragColor = rgba;
-    }
-  `
+    const maskTexture = new THREE.VideoTexture(maskVideo);
+    maskTexture.minFilter = THREE.LinearFilter;
+    maskTexture.magFilter = THREE.LinearFilter;
+    
+    // カスタムシェーダー：マスクの明るさをアルファに使う
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        colorMap: { value: colorTexture },
+        maskMap: { value: maskTexture }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D colorMap;
+        uniform sampler2D maskMap;
+        varying vec2 vUv;
+        
+        void main() {
+          vec4 color = texture2D(colorMap, vUv);
+          vec4 mask = texture2D(maskMap, vUv);
+          // マスクの輝度をアルファ値に使う
+          float alpha = (mask.r + mask.g + mask.b) / 3.0;
+          gl_FragColor = vec4(color.rgb, alpha);
+        }
+      `,
+      transparent: true,
+      side: THREE.DoubleSide
+    });
+    
+    const geometry = new THREE.PlaneGeometry(width, height);
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    this.el.setObject3D('mesh', mesh);
+  }
 });
 
 // 動画再生制御
 AFRAME.registerComponent('video-handler', {
   init: function () {
-    const video = document.querySelector("#manzai-video");
+    const colorVideo = document.querySelector("#manzai-color");
+    const maskVideo = document.querySelector("#manzai-mask");
     
     this.el.addEventListener("targetFound", event => {
       console.log("マーカー認識");
-      video.currentTime = 0;
-      video.play();
+      colorVideo.currentTime = 0;
+      maskVideo.currentTime = 0;
+      colorVideo.play();
+      maskVideo.play();
     });
     
     this.el.addEventListener("targetLost", event => {
       console.log("マーカーロスト");
-      video.pause();
+      colorVideo.pause();
+      maskVideo.pause();
     });
   }
 });
@@ -71,17 +91,16 @@ AFRAME.registerComponent('video-handler', {
 <body>
 <a-scene mindar-image="imageTargetSrc: ./assets/marker.mind;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
 <a-assets>
-<video id="manzai-video" src="./assets/manzai.mp4" preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
+<video id="manzai-color" src="./assets/manzai_color.mp4" preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
+<video id="manzai-mask" src="./assets/manzai_mask.mp4" preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
 </a-assets>
 <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 <a-entity mindar-image-target="targetIndex: 0" video-handler>
-<a-plane 
+<a-entity 
   position="0 0 0" 
-  width="1.5" 
-  height="2.667" 
   rotation="0 0 0"
-  material="shader: chroma; src: #manzai-video; color: #00ff00; similarity: 0.4; smoothness: 0.08; spill: 0.1; transparent: true; side: double"
-></a-plane>
+  alpha-video="color: #manzai-color; mask: #manzai-mask; width: 1.5; height: 2.667"
+></a-entity>
 </a-entity>
 </a-scene>
 </body>
